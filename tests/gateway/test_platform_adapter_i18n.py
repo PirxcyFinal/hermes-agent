@@ -154,6 +154,8 @@ def test_discord_native_slash_text_respects_100_char_cap(fake_locale):
     assert reasoning_choices["low"] == "low"
     # Follow-ups stay keys until the command runs.
     assert by_name["new"][4] == "platform.discord.command.new.followup"
+    assert by_name["ask"][3] == "{question}"
+    assert by_name["ask"][2][0][0] == "question"
     for row in _native_slash_commands():
         assert utf16_len(row[1]) <= 100
         for arg in row[2]:
