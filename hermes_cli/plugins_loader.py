@@ -13,6 +13,7 @@ import importlib
 import importlib.metadata
 import importlib.util
 import logging
+import os
 import re
 import sys
 import threading
@@ -565,9 +566,29 @@ class PluginLoaderMixin:
                                manifest.name, lang_id, locales_dir, lang_id)
 
     def _runs_in_plugin_host(self, manifest: PluginManifest) -> bool:
-        """``plugins.isolation: host`` sends every non-bundled Python plugin to the profile's host."""
+        """Route user plugins to the host unless the operator explicitly trusts one in-process.
+
+        In-process trust requires both an exact manifest name and the canonical profile plugin path.
+        This prevents an identically named plugin loaded from another directory bypassing isolation.
+        """
         from hermes_cli.plugin_isolation import ISOLATION_HOST, isolation_mode
-        return manifest.source != "bundled" and isolation_mode() == ISOLATION_HOST
+
+        if manifest.source == "bundled" or isolation_mode() != ISOLATION_HOST:
+            return False
+
+        trusted = {
+            name.strip()
+            for name in os.environ.get("HERMES_TRUSTED_IN_PROCESS_PLUGINS", "").split(",")
+            if name.strip()
+        }
+        if manifest.name not in trusted or not manifest.path:
+            return True
+
+        expected = (get_hermes_home() / "plugins" / manifest.name).resolve()
+        try:
+            return Path(manifest.path).resolve() != expected
+        except OSError:
+            return True
 
     def _plugin_host(self) -> Any:
         """This manager's plugin host (one process per profile home), created on first use."""
