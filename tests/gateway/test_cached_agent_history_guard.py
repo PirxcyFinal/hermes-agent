@@ -1,5 +1,8 @@
 """Regression tests for cached gateway transcript selection."""
 
+from contextlib import nullcontext
+from types import SimpleNamespace
+
 from gateway.run import _build_gateway_agent_history, _select_cached_agent_history
 
 
@@ -65,6 +68,57 @@ def test_select_cached_history_ignores_unmarked_ephemeral_scaffolding():
     ]
 
     assert _select_cached_agent_history(persisted, live) is persisted
+
+
+def test_lfm_turn_receives_role_separated_same_session_history(monkeypatch):
+    """The routed model receives prior turns separately from the current prompt."""
+    from gateway.run_turn_runner import TurnRunner
+
+    seen = {}
+
+    class Agent:
+        def run_conversation(self, message, conversation_history=None, task_id=None):
+            seen.update(
+                message=message,
+                history=list(conversation_history or []),
+                task_id=task_id,
+            )
+            return {"completed": True, "final_response": "ORCHID-742"}
+
+    runner = SimpleNamespace(_consume_pending_native_image_paths=lambda _key: [])
+    ctx = SimpleNamespace(
+        message="What is the access code?",
+        session_id="chat-a",
+        session_key="agent:default:discord:dm:chat-a",
+        source=SimpleNamespace(user_id="user-a", user_name="Kalib", is_bot=False),
+        title_user_message=None,
+        persist_user_display_kind=None,
+        persist_user_display_metadata=None,
+        moa_config=None,
+        inbound_message_id=None,
+        mute_notification_reply=False,
+    )
+    monkeypatch.setattr(
+        "agent.notification_presentation.notification_turn",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+    monkeypatch.setattr("tools.approval.register_gateway_notify", lambda *_args: None)
+    monkeypatch.setattr("tools.approval.unregister_gateway_notify", lambda *_args: None)
+
+    history = [
+        {"role": "user", "content": "The access code is ORCHID-742."},
+        {"role": "assistant", "content": "Understood."},
+    ]
+    result = TurnRunner(runner, ctx)._run_conversation_with_approval(
+        Agent(), history, None, None, None
+    )
+
+    assert result["final_response"] == "ORCHID-742"
+    assert seen == {
+        "message": "What is the access code?",
+        "history": history,
+        "task_id": "chat-a",
+    }
 
 
 def test_persistent_transcript_lag_escalates_to_error(caplog):

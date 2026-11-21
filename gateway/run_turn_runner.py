@@ -1935,8 +1935,9 @@ class TurnRunner:
         reasoning_config = runner._resolve_session_reasoning_config(source=ctx.source, session_key=ctx.session_key, model=model)
         # Laya selects only a request-scoped execution lane. It never changes the
         # profile/session, memory owner, tool permissions, or command authorization.
-        from gateway.laya_router import reasoning_for_lane, route_hermes_request
+        from gateway.laya_router import reasoning_for_lane, route_hermes_request, runtime_for_lane
         laya_lane = route_hermes_request(ctx.message or "")
+        model, runtime_kwargs = runtime_for_lane(laya_lane, model, runtime_kwargs)
         reasoning_config = reasoning_for_lane(laya_lane, reasoning_config)
         logger.info("Laya Hermes lane=%s session=%s", laya_lane, ctx.session_key or "")
         runner._reasoning_config = reasoning_config
